@@ -1,160 +1,189 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
-import 'dart:math';
 
-void main() {
-  runApp(const SzamkitalaloApp());
-}
+void main() => runApp(MemoryGameApp());
 
-class SzamkitalaloApp extends StatelessWidget {
-  const SzamkitalaloApp({super.key});
-
+class MemoryGameApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      debugShowCheckedModeBanner: false, // Kikapcsoljuk a debug feliratot
-      title: 'Számkitaláló Játék',
-      theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
-        useMaterial3: true,
-      ),
-      home: const JatekOldal(),
+      home: MemoryGameScreen(),
+      theme: ThemeData(primarySwatch: Colors.teal),
+      debugShowCheckedModeBanner: false,
     );
   }
 }
 
-class JatekOldal extends StatefulWidget {
-  const JatekOldal({super.key});
+class WordPair {
+  final String text;
+  final int id; // Az összetartozó pároknak ugyanaz az ID-ja
+  bool isFlipped = false;
+  bool isMatched = false;
 
-  @override
-  State<JatekOldal> createState() => _JatekOldalState();
+  WordPair({required this.text, required this.id});
 }
 
-class _JatekOldalState extends State<JatekOldal> {
-  final TextEditingController _controller = TextEditingController();
-  late int _titkosSzam;
-  int _tippekSzama = 0;
-  String _uzenet = "Gondoltam egy számra 1 és 100 között!";
-  bool _nyert = false;
+class MemoryGameScreen extends StatefulWidget {
+  @override
+  _MemoryGameScreenState createState() => _MemoryGameScreenState();
+}
+
+class _MemoryGameScreenState extends State<MemoryGameScreen> {
+  List<WordPair> _cards = [];
+  int _moves = 0;
+  int _seconds = 0;
+  Timer? _timer;
+  WordPair? _firstCard;
+  bool _wait = false;
 
   @override
   void initState() {
     super.initState();
-    _ujJatek();
+    _setupGame();
   }
 
-  void _ujJatek() {
-    setState(() {
-      _titkosSzam = Random().nextInt(100) + 1;
-      _tippekSzama = 0;
-      _uzenet = "Tippelj egy számra 1 és 100 között!";
-      _nyert = false;
-      _controller.clear();
+  void _setupGame() {
+    // Szópárok definiálása (ID alapján kapcsolódnak)
+    List<WordPair> baseData = [
+      WordPair(text: 'Kutya', id: 1),
+      WordPair(text: 'Dog', id: 1),
+      WordPair(text: 'Macska', id: 2),
+      WordPair(text: 'Cat', id: 2),
+      WordPair(text: 'Alma', id: 3),
+      WordPair(text: 'Apple', id: 3),
+      WordPair(text: 'Ház', id: 4),
+      WordPair(text: 'House', id: 4),
+      WordPair(text: 'Könyv', id: 5),
+      WordPair(text: 'Book', id: 5),
+      WordPair(text: 'Autó', id: 6),
+      WordPair(text: 'Car', id: 6),
+      WordPair(text: 'Nap', id: 7),
+      WordPair(text: 'Sun', id: 7),
+      WordPair(text: 'Víz', id: 8),
+      WordPair(text: 'Water', id: 8),
+    ];
+    _cards = baseData..shuffle(); // Kártyák megkeverése
+    _moves = 0;
+    _seconds = 0;
+    _startTimer();
+  }
+
+  void _startTimer() {
+    _timer?.cancel();
+    _timer = Timer.periodic(Duration(seconds: 1), (timer) {
+      setState(() => _seconds++);
     });
   }
 
-  void _ellenorzes() {
-    final int? tipp = int.tryParse(_controller.text);
-
-    if (tipp == null) {
-      setState(() => _uzenet = "Kérlek, érvényes számot adj meg!");
-      return;
-    }
+  void _onCardTap(WordPair card) {
+    if (_wait || card.isFlipped || card.isMatched) return;
 
     setState(() {
-      _tippekSzama++;
-      if (tipp < _titkosSzam) {
-        _uzenet = "Nagyobb számra gondoltam! ↑";
-      } else if (tipp > _titkosSzam) {
-        _uzenet = "Kisebb számra gondoltam! ↓";
+      card.isFlipped = true;
+    });
+
+    if (_firstCard == null) {
+      _firstCard = card;
+    } else {
+      _moves++;
+      if (_firstCard!.id == card.id) {
+        // Találat!
+        _firstCard!.isMatched = true;
+        card.isMatched = true;
+        _firstCard = null;
+        _checkWin();
       } else {
-        _uzenet = "Gratulálok! 🎉\nEltaláltad $_tippekSzama tippből!";
-        _nyert = true;
+        // Nem talált, visszafordítás kis késleltetéssel
+        _wait = true;
+        Timer(Duration(milliseconds: 800), () {
+          setState(() {
+            _firstCard!.isFlipped = false;
+            card.isFlipped = false;
+            _firstCard = null;
+            _wait = false;
+          });
+        });
       }
-      _controller.clear();
-    });
+    }
+  }
+
+  void _checkWin() {
+    if (_cards.every((card) => card.isMatched)) {
+      _timer?.cancel();
+      showDialog(
+        context: context,
+        builder: (_) => AlertDialog(
+          title: Text("Gratulálok!"),
+          content: Text("Idő: $_seconds mp\nLépések: $_moves"),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.pop(context);
+                setState(() => _setupGame());
+              },
+              child: Text("Új játék"),
+            ),
+          ],
+        ),
+      );
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text("Számkitaláló"),
-        backgroundColor: Theme.of(context).colorScheme.inversePrimary,
-        centerTitle: true,
-      ),
-      body: Center(
-        // Vízszintes középre igazítás a teljes képernyőn
-        child: Padding(
-          padding: const EdgeInsets.all(30.0),
-          child: Column(
-            mainAxisAlignment:
-                MainAxisAlignment.center, // Függőleges középre igazítás
-            crossAxisAlignment:
-                CrossAxisAlignment.center, // Tartalom vízszintes középre
-            children: [
-              Text(
-                _uzenet,
-                style: const TextStyle(
-                  fontSize: 22,
-                  fontWeight: FontWeight.bold,
-                ),
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 15),
-              Text(
-                "Eddigi próbálkozások: $_tippekSzama",
-                style: TextStyle(fontSize: 16, color: Colors.grey.shade700),
-              ),
-              const SizedBox(height: 40),
-
-              if (!_nyert) ...[
-                // Tippelés közbeni felület
-                SizedBox(
-                  width: 250, // Ne legyen túl széles a beviteli mező
-                  child: TextField(
-                    controller: _controller,
-                    keyboardType: TextInputType.number,
-                    textAlign:
-                        TextAlign.center, // A beírt szám is középen legyen
-                    decoration: const InputDecoration(
-                      border: OutlineInputBorder(),
-                      hintText: 'Szám helye',
-                    ),
-                    onSubmitted: (_) => _ellenorzes(),
-                  ),
-                ),
-                const SizedBox(height: 20),
-                ElevatedButton.icon(
-                  onPressed: _ellenorzes,
-                  icon: const Icon(Icons.send),
-                  label: const Text("Ellenőrzés"),
-                  style: ElevatedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 30,
-                      vertical: 15,
-                    ),
-                  ),
-                ),
-              ] else ...[
-                // Győzelem utáni felület - ez is teljesen középen jelenik meg
-                const Icon(Icons.emoji_events, size: 80, color: Colors.amber),
-                const SizedBox(height: 20),
-                ElevatedButton.icon(
-                  onPressed: _ujJatek,
-                  icon: const Icon(Icons.refresh),
-                  label: const Text("Új játék indítása"),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.green.shade100,
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 40,
-                      vertical: 20,
-                    ),
-                  ),
-                ),
+      appBar: AppBar(title: Text('Szókártya Memória')),
+      body: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceAround,
+              children: [
+                Text('Lépések: $_moves', style: TextStyle(fontSize: 18)),
+                Text('Idő: $_seconds mp', style: TextStyle(fontSize: 18)),
               ],
-            ],
+            ),
           ),
-        ),
+          Expanded(
+            child: GridView.builder(
+              padding: EdgeInsets.all(10),
+              gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: 4,
+                crossAxisSpacing: 8,
+                mainAxisSpacing: 8,
+              ),
+              itemCount: _cards.length,
+              itemBuilder: (context, index) {
+                var card = _cards[index];
+                return GestureDetector(
+                  onTap: () => _onCardTap(card),
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: card.isFlipped || card.isMatched
+                          ? Colors.white
+                          : Colors.teal,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.teal),
+                    ),
+                    alignment: Alignment.center,
+                    child: Text(
+                      card.isFlipped || card.isMatched ? card.text : '?',
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.bold,
+                        color: card.isFlipped || card.isMatched
+                            ? Colors.teal
+                            : Colors.white,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+        ],
       ),
     );
   }
